@@ -6,7 +6,7 @@ import * as THREE from 'three';
  * Glowing blue sphere player component
  * Movement is controlled externally via props
  */
-export function Player({ position, onPositionUpdate }) {
+export function Player({ position, onPositionUpdate, color = "#0066ff", emissive = "#0088ff" }) {
   const meshRef = useRef();
   const glowRef = useRef();
   const spotLightRef = useRef();
@@ -54,9 +54,9 @@ export function Player({ position, onPositionUpdate }) {
         position={[position[0], position[1] + 8, position[2]]}
         angle={Math.PI / 4}
         penumbra={1}
-        intensity={1080}
+        intensity={3000}
         color="#4488ff"
-        distance={40}
+        distance={60}
         castShadow
         shadow-mapSize-width={512}
         shadow-mapSize-height={512}
@@ -64,7 +64,7 @@ export function Player({ position, onPositionUpdate }) {
 
       {/* Outer glow sphere */}
       <mesh ref={glowRef} position={position}>
-        <sphereGeometry args={[0.35, 32, 32]} />
+        <sphereGeometry args={[0.8, 32, 32]} />
         <meshBasicMaterial
           color="#00aaff"
           transparent
@@ -75,10 +75,10 @@ export function Player({ position, onPositionUpdate }) {
 
       {/* Main player sphere */}
       <mesh ref={meshRef} position={position} castShadow>
-        <sphereGeometry args={[0.25, 32, 32]} />
+        <sphereGeometry args={[0.6, 32, 32]} />
         <meshStandardMaterial
-          color="#0066ff"
-          emissive="#0088ff"
+          color={color}
+          emissive={emissive}
           emissiveIntensity={2}
           metalness={0.3}
           roughness={0.2}

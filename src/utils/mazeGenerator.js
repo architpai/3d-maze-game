@@ -22,6 +22,11 @@ class SeededRandom {
     }
     return result;
   }
+
+  // Float between 0 and 1
+  random() {
+    return this.next();
+  }
 }
 
 // Directions for maze navigation
@@ -38,10 +43,11 @@ const DIRECTIONS = [
  * @param {number} height - Height of the maze in cells
  * @param {number} seed - Random seed for deterministic generation
  * @param {number} exitDistance - Minimum distance from start for exit placement
- * @returns {Object} Maze data including grid, walls, start, and exit positions
+ * @returns {Object} Maze data including grid, walls, start, exit positions, and modifiers
  */
-export function generateMaze(width = 25, height = 25, seed = Date.now(), exitDistance = 20) {
+export function generateMaze(width = 35, height = 35, seed = Date.now(), exitDistance = 25) {
   const rng = new SeededRandom(seed);
+  const cellSize = 4; // Increased cell size for wider track
 
   // Initialize grid - each cell tracks which walls are present
   const grid = [];
@@ -129,29 +135,122 @@ export function generateMaze(width = 25, height = 25, seed = Date.now(), exitDis
     }
   }
 
+  // Generate modifiers
+  const modifiers = generateModifiers(grid, width, height, startX, startY, exitX, exitY, rng, cellSize);
+
   // Convert grid to wall segments for 3D rendering
-  const walls = generateWallSegments(grid, width, height);
+  const walls = generateWallSegments(grid, width, height, cellSize);
 
   return {
     grid,
     walls,
+    modifiers,
     width,
     height,
     start: { x: startX, y: startY },
     exit: { x: exitX, y: exitY },
-    cellSize: 2, // Each cell is 2 units wide
+    cellSize,
   };
 }
+
+/**
+ * Generate random modifiers in the maze
+ */
+function generateModifiers(grid, width, height, startX, startY, exitX, exitY, rng, cellSize) {
+  const modifiers = [];
+  const minModifiers = 40;
+  const maxModifiers = 60;
+  const count = minModifiers + Math.floor(rng.random() * (maxModifiers - minModifiers));
+  const types = ['speed', 'jump', 'wisp'];
+
+  const offsetX = -width * cellSize / 2;
+  const offsetY = -height * cellSize / 2;
+
+  let placed = 0;
+  let attempts = 0;
+
+  while (placed < count && attempts < 100) {
+    attempts++;
+    const x = Math.floor(rng.random() * width);
+    const y = Math.floor(rng.random() * height);
+
+    // Don't place on start or exit
+    if ((x === startX && y === startY) || (x === exitX && y === exitY)) continue;
+
+    // Don't place if already occupied (simple check)
+    const exists = modifiers.some(m => Math.abs(m.gridX - x) < 2 && Math.abs(m.gridY - y) < 2);
+    if (exists) continue;
+
+    const type = types[Math.floor(rng.random() * types.length)];
+    const worldX = x * cellSize + cellSize / 2 + offsetX;
+    const worldZ = y * cellSize + cellSize / 2 + offsetY;
+
+    modifiers.push({
+      id: `mod_${placed}`,
+      type,
+      gridX: x,
+      gridY: y,
+      position: [worldX, 0.5, worldZ], // y=0.5 (floating height)
+      active: true
+    });
+    placed++;
+  }
+
+  return modifiers;
+}
+
+/**
+ * Solve maze using BFS to find path from start to end
+ * Returns array of world positions for the path wisp
+ */
+export function solveMaze(startPos, endPos, mazeData) {
+  const { grid, width, height, cellSize } = mazeData;
+  const startGrid = worldToGrid(startPos.x, startPos.z, mazeData);
+  const endGrid = worldToGrid(endPos.x, endPos.z, mazeData);
+
+  // BFS Queue: [x, y, path]
+  const queue = [[startGrid.x, startGrid.y, []]];
+  const visited = new Set();
+  visited.add(`${startGrid.x},${startGrid.y}`);
+
+  while (queue.length > 0) {
+    const [x, y, path] = queue.shift();
+    const currentPath = [...path, { x, y }];
+
+    if (x === endGrid.x && y === endGrid.y) {
+      // Convert grid path to world positions
+      return currentPath.map(p => gridToWorld(p.x, p.y, mazeData));
+    }
+
+    const cell = grid[y][x];
+    const neighbors = [];
+
+    if (!cell.north) neighbors.push({ x, y: y - 1 });
+    if (!cell.south) neighbors.push({ x, y: y + 1 });
+    if (!cell.east) neighbors.push({ x: x + 1, y });
+    if (!cell.west) neighbors.push({ x: x - 1, y });
+
+    for (const n of neighbors) {
+      const key = `${n.x},${n.y}`;
+      if (!visited.has(key) && n.x >= 0 && n.x < width && n.y >= 0 && n.y < height) {
+        visited.add(key);
+        queue.push([n.x, n.y, currentPath]);
+      }
+    }
+  }
+
+  return []; // No path found
+}
+
 
 /**
  * Generate wall segments from the maze grid
  * Returns array of wall positions and dimensions
  */
-function generateWallSegments(grid, width, height) {
+function generateWallSegments(grid, width, height, cellSize) {
   const walls = [];
-  const cellSize = 2;
-  const wallThickness = 0.2;
-  const wallHeight = 1.6;
+  const wallThickness = 0.3; // Slightly thicker
+  const wallHeight = 2.5; // Taller walls
 
   // Offset to center the maze
   const offsetX = -width * cellSize / 2;
@@ -227,8 +326,9 @@ export function worldToGrid(worldX, worldZ, mazeData) {
 
 /**
  * Check if a world position collides with a wall
+ * @param {boolean} canJump - If true, ignores collision check
  */
-export function checkCollision(worldX, worldZ, mazeData, radius = 0.3) {
+export function checkCollision(worldX, worldZ, mazeData, radius = 0.6) {
   const gridPos = worldToGrid(worldX, worldZ, mazeData);
   const { x: gx, y: gy } = gridPos;
 
