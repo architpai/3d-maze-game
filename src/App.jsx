@@ -1,12 +1,22 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { Game } from './components/Game';
 import { JoystickOverlay } from './components/JoystickOverlay';
+import { MainMenu } from './components/MainMenu';
+import { Tutorial } from './components/Tutorial';
 import { useControls } from './hooks/useControls';
 import './App.css';
 
+const TUTORIAL_STORAGE_KEY = 'mazeExplorer_tutorialCompleted';
+
 function App() {
-  const [gameState, setGameState] = useState('playing'); // 'playing' | 'won'
+  // Determine initial state based on localStorage
+  const getInitialState = () => {
+    const tutorialCompleted = localStorage.getItem(TUTORIAL_STORAGE_KEY);
+    return tutorialCompleted === 'true' ? 'menu' : 'tutorial';
+  };
+
+  const [gameState, setGameState] = useState(getInitialState); // 'menu' | 'tutorial' | 'playing' | 'won'
   const { movement, jump, isMobile, joystickState } = useControls();
   const [canJump, setCanJump] = useState(false);
   const gameRef = useRef();
@@ -16,37 +26,56 @@ function App() {
   }, []);
 
   const handleRestart = useCallback(() => {
+    setGameState('menu');
+  }, []);
+
+  const handlePlayGame = useCallback(() => {
     setGameState('playing');
-    // Force remount of Game component
-    window.location.reload();
+  }, []);
+
+  const handlePlayTutorial = useCallback(() => {
+    setGameState('tutorial');
+  }, []);
+
+  const handleTutorialComplete = useCallback(() => {
+    localStorage.setItem(TUTORIAL_STORAGE_KEY, 'true');
+    setGameState('playing');
+  }, []);
+
+  const handleTutorialSkip = useCallback(() => {
+    localStorage.setItem(TUTORIAL_STORAGE_KEY, 'true');
+    setGameState('menu');
   }, []);
 
   return (
     <div className="app">
-      {/* 3D Canvas */}
-      <Canvas
-        shadows
-        camera={{ position: [10, 15, 10], fov: 50 }}
-        gl={{ antialias: true }}
-      >
-        {gameState === 'playing' && (
-          <Game ref={gameRef} movement={movement} jump={jump} onWin={handleWin} onJumpStateChange={setCanJump} />
-        )}
-      </Canvas>
+      {/* Main Menu */}
+      {gameState === 'menu' && (
+        <MainMenu onPlayGame={handlePlayGame} onPlayTutorial={handlePlayTutorial} />
+      )}
 
-      {/* DEBUG OVERLAY */}
-      {/* {gameState === 'playing' && (
-        <div style={{ position: 'absolute', top: 20, right: 20, display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 1000 }}>
-            <div style={{ color: 'white', fontWeight: 'bold', marginBottom: '5px', textShadow: '1px 1px 2px black' }}>DEBUG TOOLS</div>
-            <button onClick={() => gameRef.current?.spawnDebugModifier('speed')} style={{ padding: '8px', background: '#00ffff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Spawn Speed</button>
-            <button onClick={() => gameRef.current?.spawnDebugModifier('jump')} style={{ padding: '8px', background: '#00ff00', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Spawn Jump</button>
-            <button onClick={() => gameRef.current?.spawnDebugModifier('wisp')} style={{ padding: '8px', background: 'gold', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Spawn Wisp</button>
-            <button onClick={() => gameRef.current?.clearDebugModifiers()} style={{ padding: '8px', background: 'red', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>Clear Effects</button>
-        </div>
-      )} */}
+      {/* Tutorial */}
+      {gameState === 'tutorial' && (
+        <Tutorial onComplete={handleTutorialComplete} onSkip={handleTutorialSkip} />
+      )}
+
+      {/* 3D Canvas - Always render but only show Game when playing */}
+      {(gameState === 'playing' || gameState === 'won') && (
+        <Canvas
+          shadows
+          camera={{ position: [10, 15, 10], fov: 50 }}
+          gl={{ antialias: true }}
+        >
+          {gameState === 'playing' && (
+            <Game ref={gameRef} movement={movement} jump={jump} onWin={handleWin} onJumpStateChange={setCanJump} />
+          )}
+        </Canvas>
+      )}
 
       {/* Mobile joystick overlay */}
-      {isMobile && <JoystickOverlay joystickState={joystickState} canJump={canJump} />}
+      {isMobile && gameState === 'playing' && (
+        <JoystickOverlay joystickState={joystickState} canJump={canJump} />
+      )}
 
       {/* Win screen */}
       {gameState === 'won' && (
@@ -55,7 +84,7 @@ function App() {
             <h1>🎉 YOU WIN! 🎉</h1>
             <p>You found the exit!</p>
             <button onClick={handleRestart} className="restart-btn">
-              Play Again
+              Back to Menu
             </button>
           </div>
         </div>
